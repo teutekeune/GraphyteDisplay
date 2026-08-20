@@ -6,19 +6,137 @@ import copy
 WIDTH, HEIGHT = 80, 16
 PIXEL_SIZE = 20
 
+# -----------------------------
+# Embedded 5x8 font, extracted from font5x8.h (font10x16[] table).
+# Each glyph is 8 rows; each row byte holds 5 pixel columns in its
+# top 5 bits (bit7 = col0 ... bit3 = col4), matching FONT_WIDTH=5 /
+# FONT_HEIGHT=8 from the header. Covers ASCII 32 (' ') to 126 ('~').
+FONT_FIRST = 32
+FONT_LAST = 126
+FONT_DATA = [
+    (0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00),  # ' ' (32)
+    (0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00, 0x80),  # '!' (33)
+    (0x00, 0xA0, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00),  # '"' (34)
+    (0x00, 0x00, 0x50, 0xF8, 0x50, 0xF8, 0x50, 0x00),  # '#' (35)
+    (0x00, 0x20, 0x70, 0x80, 0x60, 0x10, 0xE0, 0x40),  # '$' (36)
+    (0x00, 0xC8, 0xC8, 0x10, 0x20, 0x40, 0x98, 0x98),  # '%' (37)
+    (0x00, 0x40, 0xA0, 0xA0, 0x40, 0xA8, 0x90, 0x68),  # '&' (38)
+    (0x80, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00),  # "'" (39)
+    (0x00, 0x20, 0x40, 0x80, 0x80, 0x80, 0x40, 0x20),  # '(' (40)
+    (0x00, 0x80, 0x40, 0x20, 0x20, 0x20, 0x40, 0x80),  # ')' (41)
+    (0x00, 0x00, 0x20, 0x20, 0xF8, 0x50, 0x88, 0x00),  # '*' (42)
+    (0x00, 0x00, 0x20, 0x20, 0xF8, 0x20, 0x20, 0x00),  # '+' (43)
+    (0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0),  # ',' (44)
+    (0x00, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x00),  # '-' (45)
+    (0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0xC0),  # '.' (46)
+    (0x00, 0x08, 0x08, 0x10, 0x20, 0x40, 0x80, 0x80),  # '/' (47)
+    (0x00, 0x60, 0x90, 0x90, 0x90, 0x90, 0x90, 0x60),  # '0' (48)
+    (0x00, 0x40, 0xC0, 0x40, 0x40, 0x40, 0x40, 0xE0),  # '1' (49)
+    (0x00, 0x60, 0x90, 0x10, 0x20, 0x40, 0x80, 0xF0),  # '2' (50)
+    (0x00, 0x60, 0x90, 0x10, 0x20, 0x10, 0x90, 0x60),  # '3' (51)
+    (0x00, 0x30, 0x50, 0x90, 0xF0, 0x10, 0x10, 0x10),  # '4' (52)
+    (0x00, 0xF0, 0x80, 0xE0, 0x10, 0x10, 0x90, 0x60),  # '5' (53)
+    (0x00, 0x60, 0x80, 0xE0, 0x90, 0x90, 0x90, 0x60),  # '6' (54)
+    (0x00, 0xF0, 0x10, 0x10, 0x20, 0x40, 0x80, 0x80),  # '7' (55)
+    (0x00, 0x60, 0x90, 0x90, 0x60, 0x90, 0x90, 0x60),  # '8' (56)
+    (0x00, 0x60, 0x90, 0x90, 0x90, 0x70, 0x10, 0x60),  # '9' (57)
+    (0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x80),  # ':' (58)
+    (0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40),  # ';' (59)
+    (0x00, 0x00, 0x00, 0x20, 0x40, 0x80, 0x40, 0x20),  # '<' (60)
+    (0x00, 0x00, 0x00, 0xE0, 0x00, 0xE0, 0x00, 0x00),  # '=' (61)
+    (0x00, 0x00, 0x00, 0x80, 0x40, 0x20, 0x40, 0x80),  # '>' (62)
+    (0x00, 0x60, 0x90, 0x10, 0x60, 0x40, 0x00, 0x40),  # '?' (63)
+    (0x00, 0x78, 0x80, 0xB8, 0xA8, 0xB8, 0x80, 0x78),  # '@' (64)
+    (0x00, 0x60, 0x90, 0x90, 0xF0, 0x90, 0x90, 0x90),  # 'A' (65)
+    (0x00, 0xE0, 0x90, 0x90, 0xE0, 0x90, 0x90, 0xE0),  # 'B' (66)
+    (0x00, 0x60, 0x90, 0x80, 0x80, 0x80, 0x90, 0x60),  # 'C' (67)
+    (0x00, 0xE0, 0x90, 0x90, 0x90, 0x90, 0x90, 0xE0),  # 'D' (68)
+    (0x00, 0xF0, 0x80, 0x80, 0xE0, 0x80, 0x80, 0xF0),  # 'E' (69)
+    (0x00, 0xF0, 0x80, 0x80, 0xE0, 0x80, 0x80, 0x80),  # 'F' (70)
+    (0x00, 0x60, 0x90, 0x80, 0xB0, 0x90, 0x90, 0x70),  # 'G' (71)
+    (0x00, 0x90, 0x90, 0x90, 0xF0, 0x90, 0x90, 0x90),  # 'H' (72)
+    (0x00, 0xE0, 0x40, 0x40, 0x40, 0x40, 0x40, 0xE0),  # 'I' (73)
+    (0x00, 0x70, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20),  # 'J' (74)
+    (0x00, 0x90, 0x90, 0xA0, 0xC0, 0xA0, 0x90, 0x90),  # 'K' (75)
+    (0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xF0),  # 'L' (76)
+    (0x00, 0x88, 0xD8, 0xA8, 0x88, 0x88, 0x88, 0x88),  # 'M' (77)
+    (0x00, 0x88, 0xC8, 0xC8, 0xA8, 0x98, 0x98, 0x88),  # 'N' (78)
+    (0x00, 0x60, 0x90, 0x90, 0x90, 0x90, 0x90, 0x60),  # 'O' (79)
+    (0x00, 0xE0, 0x90, 0x90, 0xE0, 0x80, 0x80, 0x80),  # 'P' (80)
+    (0x00, 0x60, 0x90, 0x90, 0x90, 0x90, 0x90, 0x60),  # 'Q' (81)
+    (0x00, 0xE0, 0x90, 0x90, 0xE0, 0x90, 0x90, 0x90),  # 'R' (82)
+    (0x00, 0x70, 0x80, 0x80, 0x60, 0x10, 0x10, 0xE0),  # 'S' (83)
+    (0x00, 0xF8, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20),  # 'T' (84)
+    (0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x60),  # 'U' (85)
+    (0x00, 0x88, 0x88, 0x88, 0x88, 0x50, 0x50, 0x20),  # 'V' (86)
+    (0x00, 0x88, 0x88, 0x88, 0x88, 0xA8, 0xD8, 0x88),  # 'W' (87)
+    (0x00, 0x88, 0x88, 0x50, 0x20, 0x50, 0x88, 0x88),  # 'X' (88)
+    (0x00, 0x88, 0x88, 0x50, 0x20, 0x40, 0x80, 0x80),  # 'Y' (89)
+    (0x00, 0xF0, 0x10, 0x10, 0x20, 0x40, 0x80, 0xF0),  # 'Z' (90)
+    (0x00, 0xC0, 0x80, 0x80, 0x80, 0x80, 0x80, 0xC0),  # '[' (91)
+    (0x00, 0x80, 0x80, 0x40, 0x20, 0x10, 0x08, 0x08),  # '\\' (92)
+    (0x00, 0xC0, 0x40, 0x40, 0x40, 0x40, 0x40, 0xC0),  # ']' (93)
+    (0x00, 0x40, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00),  # '^' (94)
+    (0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0),  # '_' (95)
+    (0x00, 0x40, 0x20, 0x10, 0x00, 0x00, 0x00, 0x00),  # '`' (96)
+    (0x00, 0x00, 0x00, 0x60, 0x10, 0x70, 0x90, 0x70),  # 'a' (97)
+    (0x00, 0x80, 0x80, 0xE0, 0x90, 0x90, 0x90, 0xE0),  # 'b' (98)
+    (0x00, 0x00, 0x00, 0x60, 0x90, 0x80, 0x90, 0x60),  # 'c' (99)
+    (0x00, 0x10, 0x10, 0x70, 0x90, 0x90, 0x90, 0x70),  # 'd' (100)
+    (0x00, 0x00, 0x00, 0x60, 0x90, 0xF0, 0x80, 0x60),  # 'e' (101)
+    (0x00, 0x20, 0x40, 0x40, 0xE0, 0x40, 0x40, 0x40),  # 'f' (102)
+    (0x00, 0x00, 0x60, 0x90, 0x90, 0x70, 0x10, 0x70),  # 'g' (103)
+    (0x00, 0x80, 0x80, 0xE0, 0x90, 0x90, 0x90, 0x90),  # 'h' (104)
+    (0x00, 0x40, 0x00, 0xC0, 0x40, 0x40, 0x40, 0xE0),  # 'i' (105)
+    (0x00, 0x20, 0x00, 0x60, 0x20, 0x20, 0x20, 0x20),  # 'j' (106)
+    (0x00, 0x80, 0x80, 0x90, 0xA0, 0xC0, 0xA0, 0x90),  # 'k' (107)
+    (0x00, 0xC0, 0x40, 0x40, 0x40, 0x40, 0x40, 0xE0),  # 'l' (108)
+    (0x00, 0x00, 0x00, 0xD0, 0xA8, 0xA8, 0xA8, 0xA8),  # 'm' (109)
+    (0x00, 0x00, 0x00, 0xE0, 0x90, 0x90, 0x90, 0x90),  # 'n' (110)
+    (0x00, 0x00, 0x00, 0x60, 0x90, 0x90, 0x90, 0x60),  # 'o' (111)
+    (0x00, 0x00, 0x60, 0x90, 0x90, 0xE0, 0x80, 0x80),  # 'p' (112)
+    (0x00, 0x00, 0x60, 0x90, 0x90, 0x70, 0x10, 0x10),  # 'q' (113)
+    (0x00, 0x00, 0x00, 0xB0, 0xC0, 0x80, 0x80, 0x80),  # 'r' (114)
+    (0x00, 0x00, 0x00, 0x70, 0x80, 0x60, 0x10, 0xE0),  # 's' (115)
+    (0x00, 0x40, 0x40, 0x40, 0xE0, 0x40, 0x40, 0x20),  # 't' (116)
+    (0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x70),  # 'u' (117)
+    (0x00, 0x00, 0x00, 0x88, 0x88, 0x88, 0x50, 0x20),  # 'v' (118)
+    (0x00, 0x00, 0x00, 0x88, 0x88, 0xA8, 0xD8, 0x88),  # 'w' (119)
+    (0x00, 0x00, 0x00, 0x88, 0x50, 0x20, 0x50, 0x88),  # 'x' (120)
+    (0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x70),  # 'y' (121)
+    (0x00, 0x00, 0x00, 0xE0, 0x20, 0x40, 0x80, 0xE0),  # 'z' (122)
+    (0x00, 0x20, 0x40, 0x40, 0x80, 0x40, 0x40, 0x20),  # '{' (123)
+    (0x00, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80),  # '|' (124)
+    (0x00, 0x80, 0x40, 0x40, 0x20, 0x40, 0x40, 0x80),  # '}' (125)
+    (0x00, 0x50, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00),  # '~' (126)
+]
+
+
+def build_font():
+    """Convert FONT_DATA (byte-per-row, top 5 bits = columns) into the
+    {char_code: [[0/1]*5 for row in range(8)]} format used by the app."""
+    font = {}
+    for i, rows in enumerate(FONT_DATA):
+        code = FONT_FIRST + i
+        glyph = []
+        for byte in rows:
+            glyph.append([(byte >> (7 - col)) & 1 for col in range(5)])
+        font[code] = glyph
+    return font
+
 class LCDSimulator:
     def __init__(self, master):
         self.master = master
         self.master.title("GRAPHYTE-Designer")
         self.pixels = [[0]*WIDTH for _ in range(HEIGHT)]
         self.commands = []
-        self.font = {}
-        self.font_file = None
+        self.font = build_font()  # embedded 5x8 font from font5x8.h
 
         self.undo_stack = []
         self.redo_stack = []
 
         self.tool = tk.StringVar(value="line")  # default tool
+        self.device_var = tk.StringVar(value="gfx")  # name of the GraphyteDisplay instance in the sketch
 
         self.canvas = tk.Canvas(master, width=WIDTH*PIXEL_SIZE, height=HEIGHT*PIXEL_SIZE, bg="white")
         self.canvas.pack()
@@ -31,11 +149,12 @@ class LCDSimulator:
         frame.pack(fill="x")
         tk.Button(frame, text="Temizle Komutu", command=self.clear).pack(side="left")
         tk.Button(frame, text="Herşeyi temizle", command=self.clear_all_instructions).pack(side="left")
-        tk.Button(frame, text="Font Yükle .txt", command=self.load_font_file).pack(side="left")
         tk.Button(frame, text="Yazı Ekle", command=self.start_text_input).pack(side="left")
         tk.Button(frame, text="Geri Al", command=self.undo).pack(side="left")
         tk.Button(frame, text="İleri Al", command=self.redo).pack(side="left")
-        tk.Button(frame, text="Komut Listesi çıktısı", command=self.export_python_commands).pack(side="left")
+        tk.Button(frame, text="Komut Listesi çıktısı (Arduino)", command=self.export_arduino_commands).pack(side="left")
+        tk.Label(frame, text="Nesne adı:").pack(side="left")
+        tk.Entry(frame, textvariable=self.device_var, width=6).pack(side="left")
 
         # Available tools (removed pixel/invert_pixel)
         tools = ["line", "invert_line", "rect", "invert_rect",
@@ -117,27 +236,28 @@ class LCDSimulator:
         tool = self.tool.get()
         invert = "invert" in tool
         cmd = ""
+        dev = self.device_var.get().strip() or "gfx"
         if tool in ["line","invert_line"]:
             self.draw_line(self.start_x,self.start_y,end_x,end_y,temp=False,invert=invert)
-            cmd = f"graphyte.invert_line({self.start_x},{self.start_y},{end_x},{end_y})" if invert else f"graphyte.draw_line({self.start_x},{self.start_y},{end_x},{end_y})"
+            cmd = f"{dev}.invertLine({self.start_x}, {self.start_y}, {end_x}, {end_y});" if invert else f"{dev}.drawLine({self.start_x}, {self.start_y}, {end_x}, {end_y});"
         elif tool in ["rect","invert_rect"]:
             filled=False
             self.draw_rect(self.start_x,self.start_y,end_x,end_y,filled=filled,temp=False,invert=invert)
             w,h = abs(end_x-self.start_x)+1, abs(end_y-self.start_y)+1
-            cmd = f"graphyte.invert_rect({min(self.start_x,end_x)},{min(self.start_y,end_y)},{w},{h})" if invert else f"graphyte.draw_rect({min(self.start_x,end_x)},{min(self.start_y,end_y)},{w},{h})"
+            cmd = f"{dev}.invertRect({min(self.start_x,end_x)}, {min(self.start_y,end_y)}, {w}, {h});" if invert else f"{dev}.drawRect({min(self.start_x,end_x)}, {min(self.start_y,end_y)}, {w}, {h});"
         elif tool in ["filled_rect","invert_filled_rect"]:
             filled=True
             self.draw_rect(self.start_x,self.start_y,end_x,end_y,filled=filled,temp=False,invert=invert)
             w,h = abs(end_x-self.start_x)+1, abs(end_y-self.start_y)+1
-            cmd = f"graphyte.invert_rect_filled({min(self.start_x,end_x)},{min(self.start_y,end_y)},{w},{h})" if invert else f"graphyte.draw_rect_filled({min(self.start_x,end_x)},{min(self.start_y,end_y)},{w},{h})"
+            cmd = f"{dev}.invertRectFilled({min(self.start_x,end_x)}, {min(self.start_y,end_y)}, {w}, {h});" if invert else f"{dev}.drawRectFilled({min(self.start_x,end_x)}, {min(self.start_y,end_y)}, {w}, {h});"
         elif tool in ["circle","invert_circle"]:
             r=int(math.hypot(end_x-self.start_x,end_y-self.start_y))
             self.draw_circle(self.start_x,self.start_y,end_x,end_y,filled=False,temp=False,invert=invert)
-            cmd = f"graphyte.invert_circle({self.start_x},{self.start_y},{r})" if invert else f"graphyte.draw_circle({self.start_x},{self.start_y},{r})"
+            cmd = f"{dev}.invertCircle({self.start_x}, {self.start_y}, {r});" if invert else f"{dev}.drawCircle({self.start_x}, {self.start_y}, {r});"
         elif tool in ["filled_circle","invert_filled_circle"]:
             r=int(math.hypot(end_x-self.start_x,end_y-self.start_y))
             self.draw_circle(self.start_x,self.start_y,end_x,end_y,filled=True,temp=False,invert=invert)
-            cmd = f"graphyte.invert_circle_filled({self.start_x},{self.start_y},{r})" if invert else f"graphyte.draw_circle_filled({self.start_x},{self.start_y},{r})"
+            cmd = f"{dev}.invertCircleFilled({self.start_x}, {self.start_y}, {r});" if invert else f"{dev}.drawCircleFilled({self.start_x}, {self.start_y}, {r});"
         if cmd:
             self.commands.append(cmd)
         self.draw_grid()
@@ -197,31 +317,12 @@ class LCDSimulator:
                 x+=1
 
     # -----------------------------
-    def load_font_file(self):
-        path = filedialog.askopenfilename(title="Select 5x8 font file", filetypes=[("Text files","*.txt")])
-        if not path: return
-        self.font_file = path
-        self.font = {}
-        with open(path) as f:
-            lines = f.readlines()
-        char_code = None
-        row = 0
-        for line in lines:
-            line=line.strip()
-            if line.startswith("CHAR"):
-                char_code = int(line.split()[1])
-                self.font[char_code] = [[0]*5 for _ in range(8)]
-                row=0
-            elif char_code is not None and row<8:
-                for col in range(5):
-                    self.font[char_code][row][col]=1 if line[col]=='1' else 0
-                row+=1
+    @staticmethod
+    def escape_c_string(text):
+        return text.replace("\\", "\\\\").replace('"', '\\"')
 
     # -----------------------------
     def start_text_input(self):
-        if not self.font_file:
-            tk.messagebox.showerror("Error","Load font first!")
-            return
         self.cursor_text = simpledialog.askstring("Text","Enter text:")
         self.draw_grid()
 
@@ -241,11 +342,12 @@ class LCDSimulator:
                         px, py = x0 + idx*6 + col, y0 + row
                         if 0<=px<WIDTH and 0<=py<HEIGHT and bitmap[row][col]:
                             self.pixels[py][px]=1
-        if self.font_file:
-            font_name = self.font_file.split("/")[-1]
-            self.commands.append(f'graphyte.draw_text({x0},{y0},"{self.cursor_text}", font="{font_name}")')
-        else:
-            self.commands.append(f'graphyte.draw_text({x0},{y0},"{self.cursor_text}")')
+        dev = self.device_var.get().strip() or "gfx"
+        escaped = self.escape_c_string(self.cursor_text)
+        # Note: the library doesn't take a font argument - the slave's own
+        # font table (font5x8.h) is used at render time on the device.
+        cmd = f'{dev}.drawText({x0}, {y0}, "{escaped}");'
+        self.commands.append(cmd)
         self.cursor_text = ""
         self.draw_grid()
         self.push_undo()
@@ -255,7 +357,8 @@ class LCDSimulator:
         self.push_undo()
         self.pixels = [[0]*WIDTH for _ in range(HEIGHT)]
         self.draw_grid()
-        self.commands.append("graphyte.clear()")
+        dev = self.device_var.get().strip() or "gfx"
+        self.commands.append(f"{dev}.clear();")
 
     def clear_all_instructions(self):
         self.push_undo()
@@ -264,8 +367,8 @@ class LCDSimulator:
         self.draw_grid()
 
     # -----------------------------
-    def export_python_commands(self):
-        path = filedialog.asksaveasfilename(title="Save commands", defaultextension=".txt", filetypes=[("Text files","*.txt")])
+    def export_arduino_commands(self):
+        path = filedialog.asksaveasfilename(title="Save commands", defaultextension=".txt", filetypes=[("Text files","*.txt"),("Arduino source","*.ino")])
         if not path: return
         with open(path,"w") as f:
             for cmd in self.commands:
