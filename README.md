@@ -8,7 +8,7 @@ A **ready-to-manufacture PCB** exists for this project (`hardware/pcb.png`). It 
 
 The controller only has eight custom-character slots (CGRAM). Firmware treats the screen as a 16×2 grid of 5×8 tiles (exactly 80×16 pixels), then multiplexes four CGRAM banks every refresh. Persistence of vision makes the full bitmap look stable.
 
-This repo contains the production board, hardware pinout, Arduino sketches, and Python tools for drawing, clocks, and tiny black-and-white video.
+This repo contains the production board, `Graphyte.zip` (Arduino library), hardware pinout, Arduino sketches, and Python tools for drawing, clocks, and tiny black-and-white video.
 
 ---
 
@@ -19,7 +19,8 @@ This repo contains the production board, hardware pinout, Arduino sketches, and 
 | `esp_watch/` | Analog-style 3D wireframe cube + `HH:MM` clock. Time sync over USB serial, last time saved in NVS flash. |
 | `telegrama_video/` | Plays a packed 80×16 video from a `.h` header (example: 502 frames @ 24 fps). |
 | `graphyte_i2c_slave/` | I2C graphics slave at address `0x08`. Another MCU draws lines, rects, circles, and 5×8 text. |
-| `graphyte_i2c_master_test/` | Test master that walks through every slave opcode. |
+| `graphyte_i2c_master_test/` | Test master that walks through every slave opcode (raw Wire). |
+| `Graphyte.zip` | Arduino library for a second MCU: `drawLine`, `drawRect`, `drawCircle`, `drawText` over I2C. Examples: **GraphyteTest**, **GraphyteCube**. |
 | `simulator.py` | GRAPHYTE-Designer: 80×16 pixel canvas, export draw commands. |
 | `vidbw_studio.py` | Downscale a video to 80×16 B/W and export MP4, GIF, or an Arduino `.h` header. |
 | `rotoscope_studio.py` | Frame-by-frame paint / onion-skin editor for the same tiny B/W format. |
@@ -38,7 +39,7 @@ The board in `hardware/` is fab-ready. It is a 16×2 LCD backpack with the **tek
 | **J1** | Host I2C: `GND`, `5V`, `SDA`, `SCL` (left → right) |
 | **J2** | 2-pin pad next to R2 (backlight / jumper) |
 | **R1** | `3k` (silkscreen) |
-| **R2** | `220` (silkscreen, backlight current limit) |
+| **R2** | `320` Ω (silkscreen, backlight current limit) |
 | 16-pin footprint (right) | Driver / module footprint (two rows of 8) |
 
 Order it as a standard 2-layer 1.6 mm FR-4 board. After it arrives:
@@ -117,7 +118,7 @@ All sketches use the same mapping. GPIO 0–7 are contiguous so one register wri
 | 15 | A (backlight +) | **8** (or 3.3 V / 5 V through a resistor) |
 | 16 | K (backlight −) | GND |
 
-GPIO 8 is driven **HIGH** in `lcdInit()`. If the backlight is too bright or you do not want a GPIO pin on the LED, wire A to 5 V (or 3.3 V) through ~220 Ω and leave GPIO 8 unused.
+GPIO 8 is driven **HIGH** in `lcdInit()`. If the backlight is too bright or you do not want a GPIO pin on the LED, wire A to 5 V (or 3.3 V) through **320 Ω** and leave GPIO 8 unused.
 
 ### 3. Power
 
@@ -196,7 +197,7 @@ Many Super Minis reset into the ROM USB bootloader by themselves. If upload hang
 4. Click **Upload**.
 5. When it says “Connecting…”, release **BOOT**.
 
-### Upload a sketch
+### Upload a sketch (display firmware)
 
 Arduino needs the `.ino` filename to match the folder name.
 
@@ -215,14 +216,85 @@ Arduino needs the `.ino` filename to match the folder name.
 3. Keep `pioneerevladi_80x16bw.h` next to the sketch, or replace it with a header from VidBW Studio.
 4. Upload. Playback uses `VIDEO_FPS` from the header (example clip is 24 fps, 502 frames, row-packed 160 bytes/frame).
 
-**I2C slave**
+**I2C slave (required before the Graphyte library examples)**
 
 1. Open `graphyte_i2c_slave/graphyte_i2c_slave.ino` (`font5x8.h` must sit beside it).
-2. Upload to the display board.
-3. Open `graphyte_i2c_master_test/graphyte_i2c_master_test.ino` on a **second** board.
-4. Wire SDA, SCL, GND; add pull-ups.
-5. USB CDC remains **Enabled** on the slave.
-6. Serial Monitor on the master (115200) should print `op 0x.. -> OK`. `NACK on address` means wiring, address, or CDC/UART collision.
+2. Upload to the **display** board.
+3. Leave USB CDC On Boot **Enabled**.
+
+---
+
+## Install the Graphyte Arduino library
+
+`Graphyte.zip` is the Arduino library. It is a thin I2C master: `#include <Graphyte.h>` then call `drawLine`, `drawRect`, `drawCircle`, `drawText`, and so on. The display board must already be running `graphyte_i2c_slave`.
+
+### Add the ZIP in Arduino IDE
+
+1. Open Arduino IDE 2.x.
+2. **Sketch → Include Library → Add .ZIP Library…**
+3. Select `Graphyte.zip` from this repo (the file at the project root).
+4. Wait for “Library added to your libraries.” The IDE unpacks it into your sketchbook `libraries/Graphyte` folder.
+
+To confirm it installed: **Sketch → Include Library** should list **Graphyte**, and **File → Examples → Graphyte** should show **GraphyteTest** and **GraphyteCube**.
+
+If the examples menu is empty, close and reopen the IDE. Do not unzip the file by hand into a nested `Graphyte/Graphyte` folder — **Add .ZIP Library** is the reliable path.
+
+### Use it in your own sketch
+
+```cpp
+#include <Graphyte.h>
+
+GraphyteDisplay gfx; // default I2C address 0x08
+
+void setup() {
+  Serial.begin(115200);
+  gfx.begin(21, 20, 100000); // SDA, SCL, 100 kHz (ESP32-C3 Super Mini)
+  gfx.clear();
+  gfx.drawText(2, 4, "HELLO");
+}
+
+void loop() {}
+```
+
+On boards with fixed I2C pins you can call `gfx.begin()` with no arguments. Default slave address is `0x08` (`GRAPHYTE_DEFAULT_ADDR`).
+
+---
+
+## Upload the example sketches
+
+These examples run on a **second** board (the I2C master). The GraphyteDisplay PCB / Super Mini is the slave.
+
+Wire the master to **J1** on the PCB (`GND`, `5V` if the master should power the display, `SDA`, `SCL`). Share ground. The examples use GPIO **21 = SDA** and GPIO **20 = SCL** at 100 kHz — the same pins as the Super Mini.
+
+Use the same **Tools** settings as firmware upload:
+
+| Setting | Value |
+|---|---|
+| **Board** | `ESP32C3 Dev Module` |
+| **USB CDC On Boot** | **Enabled** |
+| Port | the **master** board’s COM port |
+
+### GraphyteTest
+
+Walks through every opcode: clear, lines, rects, circles, invert variants, then `HELLO I2C`.
+
+1. **File → Examples → Graphyte → GraphyteTest**
+2. Select the master board’s port.
+3. **Sketch → Upload** (Ctrl+U).
+4. **Tools → Serial Monitor**, 115200 baud, newline.
+5. You should see `Slave found, starting test loop.` then `… -> OK` for each command. The display cycles the same shapes as the built-in `graphyte_i2c_master_test` sketch.
+
+If you get `NACK on address`, the slave is not running, J1 is unplugged, or CDC is off on the slave (UART0 stole GPIO 20/21).
+
+### GraphyteCube
+
+A spinning wireframe cube. The master only sends `clear` + twelve `drawLine` calls per frame; the slave does the pixels.
+
+1. **File → Examples → Graphyte → GraphyteCube**
+2. Upload to the master board.
+3. You should see a cube rotating on the 80×16 LCD at about 25 fps.
+
+You can also open the sources directly from `Graphyte/examples/GraphyteTest` and `Graphyte/examples/GraphyteCube` in this repo after installing the ZIP.
 
 ---
 
@@ -315,6 +387,14 @@ Auto-convert, then paint frames with onion skin. Export PNG sequence, GIF, MP4, 
 
 ```text
 GraphyteDisplay/
+├── Graphyte.zip               # Arduino library (Add .ZIP Library)
+├── Graphyte/                  # same library, unpacked
+│   ├── library.properties
+│   ├── src/Graphyte.h
+│   └── examples/
+│       ├── GraphyteTest/      # File → Examples → Graphyte → GraphyteTest
+│       └── GraphyteCube/      # File → Examples → Graphyte → GraphyteCube
+├── LICENSE                    # GNU GPL-3.0
 ├── hardware/
 │   └── pcb.png                # production PCB (ready to manufacture)
 ├── esp_watch/
@@ -348,10 +428,13 @@ GraphyteDisplay/
 | Only one stripe of the image | `loop()` blocked; keep the CGRAM refresh running |
 | Clock stuck at 00:00 | Never synced; run `sync_time.py` (needs CDC **On**) |
 | Video sketch will not compile | Missing `telegrama.h` in `telegrama_video/` |
-| Master: `NACK on address` | Slave not running, no common GND, missing pull-ups |
+| Master: `NACK on address` | Slave not running, J1 unplugged, no common GND, or CDC **Disabled** on the slave |
+| Examples menu has no Graphyte | ZIP not installed; **Sketch → Include Library → Add .ZIP Library…** and pick `Graphyte.zip` |
 
 ---
 
 ## License
 
-GNU GPL V3
+This project is licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE) for the full text.
+
+You may copy, modify, and share the firmware, the Graphyte Arduino library, and the Python tools under GPL-3.0. There is no warranty.
