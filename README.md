@@ -56,7 +56,7 @@ If you do not have boards yet, the hand-wired pinout in the next section is the 
 - GraphyteDisplay PCB (production board above), **or** protoboard + jumper wires
 - **ESP32-C3 Super Mini** (native USB, ~4 MB flash)
 - **16×2 HD44780-compatible LCD** (standard 16-pin header, 5×8 font)
-- **R1 3 kΩ** and **R2 220 Ω** (already marked on the PCB)
+- **R1 3 kΩ** and **R2 320 Ω** (already marked on the PCB)
 - **10 kΩ potentiometer** for contrast only if you are wiring by hand (LCD pin 3 / V0)
 - USB-C cable for power and flashing
 - Optional for I2C mode: a second ESP32 as master, plus **4.7 kΩ pull-ups** on SDA and SCL to 3.3 V if the PCB does not already provide them
@@ -354,4 +354,4 @@ GraphyteDisplay/
 
 ## License
 
-Add a license of your choice before publishing. Hardware is standard HD44780 + ESP32-C3; firmware and tools in this tree are original to the project.
+GNU GPL V3
